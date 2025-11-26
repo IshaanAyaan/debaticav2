@@ -1,0 +1,146 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f9fafb;
+  color: #111827;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Font classes */
+.calibri {
+  font-family: Calibri, sans-serif;
+}
+
+.arial {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.times {
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.comic {
+  font-family: 'Comic Sans MS', cursive, sans-serif;
+}
+
+.georgia {
+  font-family: Georgia, serif;
+}
+
+.verdana {
+  font-family: Verdana, Geneva, sans-serif;
+}
+
+.helvetica {
+  font-family: Helvetica, Arial, sans-serif;
+}
+
+.courier {
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.trebuchet {
+  font-family: 'Trebuchet MS', Helvetica, sans-serif;
+}
+
+.impact {
+  font-family: Impact, Charcoal, sans-serif;
+}
+
+.palatino {
+  font-family: Palatino, 'Palatino Linotype', 'Book Antiqua', serif;
+}
+
+.garamond {
+  font-family: Garamond, Baskerville, 'Baskerville Old Face', serif;
+}
+
+.bookman {
+  font-family: 'Bookman Old Style', Bookman, serif;
+}
+
+.tahoma {
+  font-family: Tahoma, Geneva, sans-serif;
+}
+
+.lucida {
+  font-family: 'Lucida Console', Monaco, monospace;
+}
+
+.century {
+  font-family: 'Century Gothic', sans-serif;
+}
+
+.futura {
+  font-family: Futura, 'Trebuchet MS', sans-serif;
+}
+
+.roboto {
+  font-family: 'Roboto', sans-serif;
+}
+
+.open-sans {
+  font-family: 'Open Sans', sans-serif;
+}
+
+.lato {
+  font-family: 'Lato', sans-serif;
+}
+
+.montserrat {
+  font-family: 'Montserrat', sans-serif;
+}
+
+.raleway {
+  font-family: 'Raleway', sans-serif;
+}
+
+.ubuntu {
+  font-family: 'Ubuntu', sans-serif;
+}
+
+.playfair {
+  font-family: 'Playfair Display', serif;
+}
+
+.merriweather {
+  font-family: 'Merriweather', serif;
+}
+
+.oswald {
+  font-family: 'Oswald', sans-serif;
+}
+
+.source-sans {
+  font-family: 'Source Sans Pro', sans-serif;
+}
+
+.pt-sans {
+  font-family: 'PT Sans', sans-serif;
+}
+
+.droid-sans {
+  font-family: 'Droid Sans', sans-serif;
+}
+
+/* Reset injected HTML */
+.reset-injected-html * {
+  margin: 0 !important;
+}
+
+.reset-injected-html {
+  word-break: break-word;
+}
+

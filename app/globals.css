@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Font definitions for card editor */
+@font-face { font-family: 'calibri'; src: local('Calibri'); }
+@font-face { font-family: 'arial'; src: local('Arial'); }
+@font-face { font-family: 'times'; src: local('Times New Roman'); }
+@font-face { font-family: 'georgia'; src: local('Georgia'); }
+@font-face { font-family: 'verdana'; src: local('Verdana'); }
+@font-face { font-family: 'helvetica'; src: local('Helvetica'); }
+@font-face { font-family: 'courier'; src: local('Courier New'); }
+@font-face { font-family: 'trebuchet'; src: local('Trebuchet MS'); }
+@font-face { font-family: 'impact'; src: local('Impact'); }
+@font-face { font-family: 'palatino'; src: local('Palatino'); }
+@font-face { font-family: 'garamond'; src: local('Garamond'); }
+@font-face { font-family: 'bookman'; src: local('Bookman'); }
+@font-face { font-family: 'tahoma'; src: local('Tahoma'); }
+@font-face { font-family: 'lucida'; src: local('Lucida Sans'); }
+
+/* Custom highlight colors */
+.highlight-yellow { background-color: #fdff00 !important; text-decoration: underline; }
+.highlight-cyan { background-color: #00ffff !important; text-decoration: underline; }
+.highlight-green { background-color: #00ff00 !important; text-decoration: underline; }
+
+/* Editor styles */
+.editable-content {
+  min-height: 400px;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  outline: none;
+}
+
+.editable-content:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Sticky toolbar */
+.sticky-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0.75rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
