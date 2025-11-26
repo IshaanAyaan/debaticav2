@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.2.1",
-    "@next/swc-darwin-arm64": "^14.1.0",
     "@supabase/auth-helpers-nextjs": "^0.8.7",
     "@supabase/supabase-js": "^2.39.3",
     "@tiptap/extension-color": "^3.11.0",
