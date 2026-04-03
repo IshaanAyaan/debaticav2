@@ -69,6 +69,14 @@ test('ingest builds clustered multi-event evidence search', async (t) => {
   assert.equal(bqQuery.results[0]?.tag, 'Community service should be required for graduation')
   assert.ok(bqQuery.results.length >= 3)
 
+  const weakAcronymQuery = searchCards({ q: 'ubi', page: 1, pageSize: 10, event: '' })
+  assert.equal(weakAcronymQuery.mode, 'closest')
+  assert.ok(weakAcronymQuery.results.length > 0)
+
+  const broadTopicQuery = searchCards({ q: 'debate', page: 1, pageSize: 10, event: '' })
+  assert.equal(broadTopicQuery.mode, 'closest')
+  assert.ok(broadTopicQuery.results.length > 0)
+
   const detail = getCardById(policyQuery.results[0]!.id)
   assert.ok(detail)
   assert.match(detail?.renderedMarkup || '', /<mark>/)

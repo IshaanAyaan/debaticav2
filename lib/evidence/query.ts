@@ -424,65 +424,70 @@ function queryExactResults(
     return { total: 0, items: [] }
   }
 
-  const countRow = db
-    .prepare(`
-      SELECT COUNT(*) AS total
-      FROM evidence_clusters_fts
-      JOIN evidence_clusters AS clusters ON clusters.id = evidence_clusters_fts.id
-      WHERE evidence_clusters_fts MATCH $ftsQuery${filterSql}
-    `)
-    .get({
-      ...filterParams,
-      ftsQuery,
-    })
-
-  const rows = db
-    .prepare(`
-      WITH ranked AS (
-        SELECT
-          clusters.*,
-          (
-            (-bm25(evidence_clusters_fts, 14.0, 10.0, 7.0, 5.0, 6.0, 4.0, 2.0, 1.0))
-            + CASE
-                WHEN lower(clusters.tag) = $phrase THEN 4.2
-                WHEN lower(clusters.tag) LIKE ($phrase || '%') THEN 3.2
-                WHEN lower(clusters.tag) LIKE ('%' || $phrase || '%') THEN 2.4
-                ELSE 0
-              END
-            + CASE
-                WHEN lower(clusters.fullcite) LIKE ('%' || $phrase || '%') THEN 1.2
-                ELSE 0
-              END
-            + (ln(clusters.supportCount + 1) * 0.55)
-            + (ln(clusters.variantCount + 1) * 0.25)
-          ) AS score
+  try {
+    const countRow = db
+      .prepare(`
+        SELECT COUNT(*) AS total
         FROM evidence_clusters_fts
         JOIN evidence_clusters AS clusters ON clusters.id = evidence_clusters_fts.id
         WHERE evidence_clusters_fts MATCH $ftsQuery${filterSql}
-      )
-      SELECT *
-      FROM ranked AS clusters
-      ORDER BY ${buildSearchOrder(sort)}
-      LIMIT $limit
-    `)
-    .all({
-      ...filterParams,
-      ftsQuery,
-      phrase: normalizedQuery.toLowerCase(),
-      limit: FALLBACK_CANDIDATE_LIMIT,
-    })
+      `)
+      .get({
+        ...filterParams,
+        ftsQuery,
+      })
 
-  const items = rows
-    .map((row) => mapSummaryRow(row as SqlRow))
-    .sort((left, right) => {
-      const rightScore = computeExactBlendScore(right, normalizedQuery)
-      const leftScore = computeExactBlendScore(left, normalizedQuery)
-      return rightScore - leftScore
-    })
+    const rows = db
+      .prepare(`
+        WITH ranked AS (
+          SELECT
+            clusters.*,
+            (
+              (-bm25(evidence_clusters_fts, 14.0, 10.0, 7.0, 5.0, 6.0, 4.0, 2.0, 1.0))
+              + CASE
+                  WHEN lower(clusters.tag) = $phrase THEN 4.2
+                  WHEN lower(clusters.tag) LIKE ($phrase || '%') THEN 3.2
+                  WHEN lower(clusters.tag) LIKE ('%' || $phrase || '%') THEN 2.4
+                  ELSE 0
+                END
+              + CASE
+                  WHEN lower(clusters.fullcite) LIKE ('%' || $phrase || '%') THEN 1.2
+                  ELSE 0
+                END
+              + (ln(clusters.supportCount + 1) * 0.55)
+              + (ln(clusters.variantCount + 1) * 0.25)
+            ) AS score
+          FROM evidence_clusters_fts
+          JOIN evidence_clusters AS clusters ON clusters.id = evidence_clusters_fts.id
+          WHERE evidence_clusters_fts MATCH $ftsQuery${filterSql}
+        )
+        SELECT *
+        FROM ranked AS clusters
+        ORDER BY ${buildSearchOrder(sort)}
+        LIMIT $limit
+      `)
+      .all({
+        ...filterParams,
+        ftsQuery,
+        phrase: normalizedQuery.toLowerCase(),
+        limit: FALLBACK_CANDIDATE_LIMIT,
+      })
 
-  return {
-    total: numericValue(countRow?.total),
-    items,
+    const items = rows
+      .map((row) => mapSummaryRow(row as SqlRow))
+      .sort((left, right) => {
+        const rightScore = computeExactBlendScore(right, normalizedQuery)
+        const leftScore = computeExactBlendScore(left, normalizedQuery)
+        return rightScore - leftScore
+      })
+
+    return {
+      total: numericValue(countRow?.total),
+      items,
+    }
+  } catch (error) {
+    console.warn(`Exact evidence search failed for query "${normalizedQuery}"`, error)
+    return { total: 0, items: [] }
   }
 }
 
@@ -578,36 +583,65 @@ function queryFallbackResults(
   let rows: SqlRow[] = []
 
   if (ftsQuery) {
-    rows = db
-      .prepare(`
-        SELECT clusters.*
-        FROM evidence_clusters_fts
-        JOIN evidence_clusters AS clusters ON clusters.id = evidence_clusters_fts.id
-        WHERE evidence_clusters_fts MATCH $ftsQuery${filterSql}
-        LIMIT $limit
-      `)
-      .all({
-        ...filterParams,
-        ftsQuery,
-        limit: FALLBACK_CANDIDATE_LIMIT,
-      }) as SqlRow[]
+    try {
+      rows = db
+        .prepare(`
+          SELECT clusters.*
+          FROM evidence_clusters_fts
+          JOIN evidence_clusters AS clusters ON clusters.id = evidence_clusters_fts.id
+          WHERE evidence_clusters_fts MATCH $ftsQuery${filterSql}
+          LIMIT $limit
+        `)
+        .all({
+          ...filterParams,
+          ftsQuery,
+          limit: FALLBACK_CANDIDATE_LIMIT,
+        }) as SqlRow[]
+    } catch (error) {
+      console.warn(`Closest-match FTS search failed for query "${normalizedQuery}"`, error)
+      rows = []
+    }
   }
 
   if (rows.length < FALLBACK_CANDIDATE_LIMIT && tokens.length > 0) {
+    const likeParams: Record<string, unknown> = { ...filterParams }
     const likeClauses = tokens
       .map((token, index) => {
         const key = `like${index}`
-        filterParams[key] = `%${token}%`
+        likeParams[key] = `%${token}%`
         return `(lower(clusters.tag) LIKE $${key} OR lower(clusters.fullcite) LIKE $${key} OR lower(clusters.block) LIKE $${key} OR lower(clusters.summary) LIKE $${key} OR lower(clusters.spoken) LIKE $${key})`
       })
       .join(' OR ')
 
     if (likeClauses) {
-      const moreRows = db
+      try {
+        const moreRows = db
+          .prepare(`
+            SELECT clusters.*
+            FROM evidence_clusters AS clusters
+            WHERE 1 = 1${filterSql} AND (${likeClauses})
+            ORDER BY clusters.supportCount DESC, CAST(NULLIF(clusters.year, '') AS INTEGER) DESC, clusters.id DESC
+            LIMIT $limit
+          `)
+          .all({
+            ...likeParams,
+            limit: FALLBACK_CANDIDATE_LIMIT,
+          }) as SqlRow[]
+
+        rows = [...rows, ...moreRows]
+      } catch (error) {
+        console.warn(`Closest-match LIKE search failed for query "${normalizedQuery}"`, error)
+      }
+    }
+  }
+
+  if (rows.length === 0) {
+    try {
+      rows = db
         .prepare(`
           SELECT clusters.*
           FROM evidence_clusters AS clusters
-          WHERE 1 = 1${filterSql} AND (${likeClauses})
+          WHERE 1 = 1${filterSql}
           ORDER BY clusters.supportCount DESC, CAST(NULLIF(clusters.year, '') AS INTEGER) DESC, clusters.id DESC
           LIMIT $limit
         `)
@@ -615,24 +649,10 @@ function queryFallbackResults(
           ...filterParams,
           limit: FALLBACK_CANDIDATE_LIMIT,
         }) as SqlRow[]
-
-      rows = [...rows, ...moreRows]
+    } catch (error) {
+      console.warn(`Browse fallback search failed for query "${normalizedQuery}"`, error)
+      rows = []
     }
-  }
-
-  if (rows.length === 0) {
-    rows = db
-      .prepare(`
-        SELECT clusters.*
-        FROM evidence_clusters AS clusters
-        WHERE 1 = 1${filterSql}
-        ORDER BY clusters.supportCount DESC, CAST(NULLIF(clusters.year, '') AS INTEGER) DESC, clusters.id DESC
-        LIMIT $limit
-      `)
-      .all({
-        ...filterParams,
-        limit: FALLBACK_CANDIDATE_LIMIT,
-      }) as SqlRow[]
   }
 
   return dedupeSummaries(rows.map((row) => mapSummaryRow(row))).sort(
@@ -640,73 +660,113 @@ function queryFallbackResults(
   )
 }
 
+function queryBrowsePage(
+  db: ReturnType<typeof getEvidenceDb>,
+  filters: CardFilterState,
+  sort: SearchSort,
+  page: number,
+  pageSize: number
+): { total: number; items: EvidenceCardSummary[] } {
+  const filterParams: Record<string, unknown> = {}
+  const filterSql = buildFilterSql(filters, filterParams)
+  const offset = (page - 1) * pageSize
+
+  const totalRow = db
+    .prepare(`SELECT COUNT(*) AS total FROM evidence_clusters AS clusters WHERE 1 = 1${filterSql}`)
+    .get(filterParams)
+
+  const rows = db
+    .prepare(`
+      SELECT clusters.*
+      FROM evidence_clusters AS clusters
+      WHERE 1 = 1${filterSql}
+      ORDER BY ${buildBrowseOrder(sort)}
+      LIMIT $limit OFFSET $offset
+    `)
+    .all({
+      ...filterParams,
+      limit: pageSize,
+      offset,
+    })
+
+  return {
+    total: numericValue(totalRow?.total),
+    items: rows.map((row) => mapSummaryRow(row as SqlRow)),
+  }
+}
+
 export function searchCards(params: CardSearchParams): SearchResponse {
-  const db = getEvidenceDb()
   const page = Math.max(params.page || 1, 1)
   const pageSize = Math.min(Math.max(params.pageSize || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE)
   const filters = coerceFilters(params)
   const normalizedQuery = normalizeWhitespace(params.q || '')
   const hasQuery = normalizedQuery.length > 0
   const sort = parseSort(params.sort, hasQuery)
-  const offset = (page - 1) * pageSize
-  const filterParams: Record<string, unknown> = {}
-  const filterSql = buildFilterSql(filters, filterParams)
+  let db: ReturnType<typeof getEvidenceDb> | null = null
 
-  if (!hasQuery) {
-    const totalRow = db
-      .prepare(`SELECT COUNT(*) AS total FROM evidence_clusters AS clusters WHERE 1 = 1${filterSql}`)
-      .get(filterParams)
+  try {
+    db = getEvidenceDb()
 
-    const rows = db
-      .prepare(`
-        SELECT clusters.*
-        FROM evidence_clusters AS clusters
-        WHERE 1 = 1${filterSql}
-        ORDER BY ${buildBrowseOrder(sort)}
-        LIMIT $limit OFFSET $offset
-      `)
-      .all({
-        ...filterParams,
-        limit: pageSize,
-        offset,
-      })
+    if (!hasQuery) {
+      const browse = queryBrowsePage(db, filters, sort, page, pageSize)
+
+      return {
+        query: normalizedQuery,
+        mode: 'exact',
+        page,
+        pageSize,
+        total: browse.total,
+        hasMore: page * pageSize < browse.total,
+        sort,
+        filters,
+        results: browse.items,
+      }
+    }
+
+    const exact = queryExactResults(db, normalizedQuery, filters, sort)
+    const mode = exact.items.length >= MIN_EXACT_RESULTS ? 'exact' : 'closest'
+    const combined =
+      mode === 'exact'
+        ? exact.items
+        : dedupeSummaries([...exact.items, ...queryFallbackResults(db, normalizedQuery, filters)]).slice(
+            0,
+            FALLBACK_CANDIDATE_LIMIT
+          )
+    const offset = (page - 1) * pageSize
+    const pageItems = combined.slice(offset, offset + pageSize)
 
     return {
       query: normalizedQuery,
-      mode: 'exact',
+      mode,
       page,
       pageSize,
-      total: numericValue(totalRow?.total),
-      hasMore: offset + rows.length < numericValue(totalRow?.total),
+      total: mode === 'exact' ? exact.total : combined.length,
+      hasMore: offset + pageItems.length < (mode === 'exact' ? exact.total : combined.length),
       sort,
       filters,
-      results: rows.map((row) => mapSummaryRow(row as SqlRow)),
+      results: pageItems,
     }
-  }
+  } catch (error) {
+    if (error instanceof EvidenceDatabaseUnavailableError) {
+      throw error
+    }
 
-  const exact = queryExactResults(db, normalizedQuery, filters, sort)
-  const mode = exact.items.length >= MIN_EXACT_RESULTS ? 'exact' : 'closest'
+    console.warn(`Search execution failed for query "${normalizedQuery}", returning browse fallback instead.`, error)
 
-  const combined =
-    mode === 'exact'
-      ? exact.items
-      : dedupeSummaries([
-          ...exact.items,
-          ...queryFallbackResults(db, normalizedQuery, filters),
-        ]).slice(0, FALLBACK_CANDIDATE_LIMIT)
+    const fallbackDb = db ?? getEvidenceDb()
+    const browse = queryBrowsePage(fallbackDb, filters, sort, page, pageSize)
 
-  const pageItems = combined.slice(offset, offset + pageSize)
-
-  return {
-    query: normalizedQuery,
-    mode,
-    page,
-    pageSize,
-    total: mode === 'exact' ? exact.total : combined.length,
-    hasMore: offset + pageItems.length < (mode === 'exact' ? exact.total : combined.length),
-    sort,
-    filters,
-    results: pageItems,
+    return {
+      query: normalizedQuery,
+      mode: 'closest',
+      page,
+      pageSize,
+      total: browse.total,
+      hasMore: page * pageSize < browse.total,
+      sort,
+      filters,
+      results: browse.items,
+    }
   }
 }
 
