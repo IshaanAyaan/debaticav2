@@ -2,7 +2,6 @@
 
 Debatica is a focused debate evidence finder built with Next.js. It serves a simple two-pane search experience: results on the left, a rendered debate card on the right, with copy-ready formatting and source links for each card.
 
-The current app is optimized for demo reliability. By default it serves a bundled SQLite evidence index locally and on Vercel, with a Vercel-safe runtime copy under `/tmp` so production searches do not fail on the read-only deployment filesystem.
 
 ## What It Does
 
