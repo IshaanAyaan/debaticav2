@@ -1,82 +1,132 @@
--- Supabase database schema
+create extension if not exists pg_trgm;
+create extension if not exists vector;
 
--- Users table (handled by Supabase Auth)
-
--- Cards table
-CREATE TABLE cards (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  tag TEXT NOT NULL,
-  citation TEXT NOT NULL,
-  content TEXT NOT NULL,
-  url TEXT,
-  font TEXT DEFAULT 'calibri',
-  tag_size TEXT DEFAULT '12pt',
-  highlight_color TEXT DEFAULT '#fdff00',
-  highlights JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+create table if not exists public.evidence_import_manifests (
+  id bigserial primary key,
+  source_name text not null,
+  source_reference text not null,
+  source_year_start text not null,
+  source_year_end text not null,
+  event_filter text not null,
+  total_rows integer not null,
+  imported_rows integer not null,
+  canonical_clusters integer not null,
+  skipped_rows integer not null,
+  imported_at timestamptz not null default now(),
+  filter_settings jsonb not null default '{}'::jsonb
 );
 
--- Collections table for organizing cards
-CREATE TABLE collections (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  description TEXT,
-  topic TEXT,
-  argument_type TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+create table if not exists public.evidence_clusters (
+  id text primary key,
+  cluster_key text not null unique,
+  bucket_id text not null default '',
+  event text not null default '',
+  hat text not null default '',
+  block text not null default '',
+  tag text not null default '',
+  cite text not null default '',
+  fullcite text not null default '',
+  summary text not null default '',
+  spoken text not null default '',
+  fulltext text not null default '',
+  markup text not null default '',
+  rendered_markup text not null default '',
+  support_count integer not null default 0,
+  variant_count integer not null default 0,
+  canonical_quality_score integer not null default 0,
+  team_display_name text not null default '',
+  school_display_name text not null default '',
+  caselist_display_name text not null default '',
+  tournament text not null default '',
+  round text not null default '',
+  opponent text not null default '',
+  judge text not null default '',
+  year text not null default '',
+  level text not null default '',
+  source_article_url text not null default '',
+  source_page_url text not null default '',
+  file_url text not null default '',
+  embedding vector(1536),
+  search_document tsvector generated always as (
+    setweight(to_tsvector('english', coalesce(tag, '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(cite, '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(fullcite, '')), 'B') ||
+    setweight(to_tsvector('english', coalesce(spoken, '')), 'B') ||
+    setweight(to_tsvector('english', coalesce(summary, '')), 'C') ||
+    setweight(to_tsvector('english', coalesce(fulltext, '')), 'D') ||
+    setweight(to_tsvector('english', coalesce(block, '')), 'C') ||
+    setweight(to_tsvector('english', coalesce(hat, '')), 'D')
+  ) stored
 );
 
--- Junction table for cards in collections
-CREATE TABLE card_collections (
-  card_id UUID REFERENCES cards(id) ON DELETE CASCADE,
-  collection_id UUID REFERENCES collections(id) ON DELETE CASCADE,
-  position INTEGER,
-  PRIMARY KEY (card_id, collection_id)
+create table if not exists public.evidence_variants (
+  id text primary key,
+  cluster_id text not null references public.evidence_clusters(id) on delete cascade,
+  cluster_key text not null,
+  event text not null default '',
+  hat text not null default '',
+  block text not null default '',
+  tag text not null default '',
+  cite text not null default '',
+  fullcite text not null default '',
+  summary text not null default '',
+  spoken text not null default '',
+  fulltext text not null default '',
+  markup text not null default '',
+  rendered_markup text not null default '',
+  duplicate_count integer not null default 0,
+  quality_score integer not null default 0,
+  team_display_name text not null default '',
+  school_display_name text not null default '',
+  caselist_display_name text not null default '',
+  tournament text not null default '',
+  round text not null default '',
+  opponent text not null default '',
+  judge text not null default '',
+  year text not null default '',
+  level text not null default '',
+  source_article_url text not null default '',
+  source_page_url text not null default '',
+  file_url text not null default ''
 );
 
--- Search history
-CREATE TABLE search_history (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  query TEXT NOT NULL,
-  results JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+create index if not exists idx_evidence_clusters_event on public.evidence_clusters(event);
+create index if not exists idx_evidence_clusters_support on public.evidence_clusters(support_count desc);
+create index if not exists idx_evidence_clusters_year on public.evidence_clusters(year);
+create index if not exists idx_evidence_clusters_search on public.evidence_clusters using gin(search_document);
+create index if not exists idx_evidence_clusters_tag_trgm on public.evidence_clusters using gin(tag gin_trgm_ops);
+create index if not exists idx_evidence_clusters_cite_trgm on public.evidence_clusters using gin(fullcite gin_trgm_ops);
+create index if not exists idx_evidence_variants_cluster on public.evidence_variants(cluster_id);
+create index if not exists idx_evidence_variants_quality on public.evidence_variants(cluster_id, quality_score desc, duplicate_count desc);
 
--- Enable Row Level Security
-ALTER TABLE cards ENABLE ROW LEVEL SECURITY;
-ALTER TABLE collections ENABLE ROW LEVEL SECURITY;
-ALTER TABLE card_collections ENABLE ROW LEVEL SECURITY;
-ALTER TABLE search_history ENABLE ROW LEVEL SECURITY;
+-- Optional vector index for large hosted corpora.
+create index if not exists idx_evidence_clusters_embedding
+  on public.evidence_clusters
+  using ivfflat (embedding vector_cosine_ops)
+  with (lists = 100);
 
--- RLS Policies
-CREATE POLICY "Users can CRUD their own cards" ON cards
-  FOR ALL USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can CRUD their own collections" ON collections
-  FOR ALL USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can CRUD their own card_collections" ON card_collections
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM collections
-      WHERE collections.id = card_collections.collection_id
-      AND collections.user_id = auth.uid()
+create or replace function public.match_evidence_clusters(
+  query_embedding vector(1536),
+  match_count integer default 24,
+  event_filter text default null
+)
+returns table (
+  id text,
+  similarity double precision
+)
+language sql
+stable
+as $$
+  select
+    clusters.id,
+    1 - (clusters.embedding <=> query_embedding) as similarity
+  from public.evidence_clusters as clusters
+  where clusters.embedding is not null
+    and (
+      event_filter is null
+      or trim(event_filter) = ''
+      or lower(clusters.event) = lower(event_filter)
     )
-  );
-
-CREATE POLICY "Users can view their own search history" ON search_history
-  FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own search history" ON search_history
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- Indexes for performance
-CREATE INDEX idx_cards_user_id ON cards(user_id);
-CREATE INDEX idx_collections_user_id ON collections(user_id);
-CREATE INDEX idx_search_history_user_id ON search_history(user_id);
-CREATE INDEX idx_cards_created_at ON cards(created_at DESC);
+  order by clusters.embedding <=> query_embedding
+  limit greatest(match_count, 1);
+$$;

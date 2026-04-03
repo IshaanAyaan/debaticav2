@@ -2,48 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Font definitions for card editor */
-@font-face { font-family: 'calibri'; src: local('Calibri'); }
-@font-face { font-family: 'arial'; src: local('Arial'); }
-@font-face { font-family: 'times'; src: local('Times New Roman'); }
-@font-face { font-family: 'georgia'; src: local('Georgia'); }
-@font-face { font-family: 'verdana'; src: local('Verdana'); }
-@font-face { font-family: 'helvetica'; src: local('Helvetica'); }
-@font-face { font-family: 'courier'; src: local('Courier New'); }
-@font-face { font-family: 'trebuchet'; src: local('Trebuchet MS'); }
-@font-face { font-family: 'impact'; src: local('Impact'); }
-@font-face { font-family: 'palatino'; src: local('Palatino'); }
-@font-face { font-family: 'garamond'; src: local('Garamond'); }
-@font-face { font-family: 'bookman'; src: local('Bookman'); }
-@font-face { font-family: 'tahoma'; src: local('Tahoma'); }
-@font-face { font-family: 'lucida'; src: local('Lucida Sans'); }
+@layer base {
+  :root {
+    --paper: #f8fafc;
+    --line: rgba(148, 163, 184, 0.32);
+    --line-strong: rgba(100, 116, 139, 0.45);
+    --ink: #0f172a;
+    --ink-soft: #64748b;
+    --accent: #2563eb;
+  }
 
-/* Custom highlight colors */
-.highlight-yellow { background-color: #fdff00 !important; text-decoration: underline; }
-.highlight-cyan { background-color: #00ffff !important; text-decoration: underline; }
-.highlight-green { background-color: #00ff00 !important; text-decoration: underline; }
+  * {
+    border-color: var(--line);
+  }
 
-/* Editor styles */
-.editable-content {
-  min-height: 400px;
-  padding: 1rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  outline: none;
+  html,
+  body {
+    min-height: 100vh;
+    overflow-x: hidden;
+    background: #f8fafc;
+    color: var(--ink);
+    font-family: var(--font-sans), sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: rgba(37, 99, 235, 0.2);
+    color: var(--ink);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-sans), sans-serif;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
-.editable-content:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
 
-/* Sticky toolbar */
-.sticky-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 0.75rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+*::-webkit-scrollbar-track {
+  background: rgba(92, 73, 52, 0.08);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgba(77, 65, 50, 0.24);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(77, 65, 50, 0.36);
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-sans), sans-serif;
+  }
+}
+
+.evidence-card p {
+  margin: 0 0 1rem;
+}
+
+.evidence-card p:last-child {
+  margin-bottom: 0;
+}
+
+.evidence-card mark {
+  background: rgba(34, 211, 238, 0.55);
+  color: inherit;
+  padding: 0 0.08em;
+}
+
+.evidence-card blockquote {
+  margin: 1rem 0;
+  border-left: 3px solid rgba(37, 99, 235, 0.35);
+  padding-left: 1rem;
+  color: #334155;
 }

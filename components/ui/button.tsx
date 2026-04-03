@@ -6,10 +6,14 @@ import clsx from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
 const variantClasses: Record<string, string> = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
+  primary: 'bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[#16211f] focus:ring-[color:var(--accent)]',
+  secondary:
+    'border border-[color:var(--line)] bg-[color:var(--accent-soft)] text-[color:var(--accent-deep)] hover:bg-[#ecd4c5] focus:ring-[color:var(--accent)]',
   outline:
-    'border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-blue-500',
-  ghost: 'text-gray-700 hover:bg-gray-100 focus:ring-blue-500',
+    'border border-[color:var(--line-strong)] bg-[color:var(--panel)] text-[color:var(--ink)] hover:bg-[color:var(--paper-soft)] focus:ring-[color:var(--accent)]',
+  ghost: 'text-[color:var(--ink-soft)] hover:bg-[rgba(191,108,70,0.08)] focus:ring-[color:var(--accent)]',
+  gradient:
+    'bg-gradient-to-r from-[#c6734d] to-[#a65335] text-white hover:from-[#b86742] hover:to-[#92472e] focus:ring-[color:var(--accent)]',
 }
 
 const sizeClasses: Record<string, string> = {
@@ -30,7 +34,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         className={twMerge(
           clsx(
-            'inline-flex items-center justify-center rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
+            'inline-flex items-center justify-center rounded-full font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[color:var(--paper)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
             variantClasses[variant],
             sizeClasses[size]
           ),

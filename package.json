@@ -6,7 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --experimental-strip-types --experimental-specifier-resolution=node --test tests/**/*.test.ts",
+    "ingest:evidence:demo": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/ingest-evidence.ts --source=./fixtures/evidence-sample.csv",
+    "ingest:evidence": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/ingest-evidence.ts",
+    "ingest:evidence:hybrid": "npm run ingest:evidence:demo",
+    "ingest:evidence:subset": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/ingest-evidence.ts --years=2018,2019,2020,2021,2022 --limit-per-event-per-source=80",
+    "ingest:evidence:sample": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/ingest-evidence.ts --source=./fixtures/evidence-sample.csv",
+    "sync:evidence:supabase": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/sync-evidence-to-supabase.ts",
+    "sync:evidence:supabase:replace": "node --experimental-strip-types --experimental-specifier-resolution=node scripts/sync-evidence-to-supabase.ts --replace"
   },
   "dependencies": {
     "@google/generative-ai": "^0.2.1",
@@ -22,6 +30,7 @@
     "axios": "^1.6.5",
     "cheerio": "^1.0.0-rc.12",
     "clsx": "^2.1.0",
+    "csv-parse": "^5.6.0",
     "lucide-react": "^0.316.0",
     "next": "14.1.0",
     "openai": "^4.26.1",
