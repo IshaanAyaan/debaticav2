@@ -1,8 +1,15 @@
+# Dependencies and build output
 node_modules
 .next
+dist
+
+# Local environment
 .env.local
 .env*
-dist
+
+# OS files
 .DS_Store
+
+# Evidence databases
 data/*
 !data/evidence-index.sqlite
