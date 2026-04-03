@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -177,16 +177,19 @@ test('search service defaults to sqlite for demo mode even when supabase env var
   const tempDir = mkdtempSync(path.join(tmpdir(), 'debatica-evidence-provider-'))
   const csvPath = path.join(tempDir, 'evidence-sample.csv')
   const dbPath = path.join(tempDir, 'evidence.sqlite')
+  const runtimeDir = path.join(tempDir, 'runtime-db')
   const originalDbPath = process.env.EVIDENCE_DB_PATH
   const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const originalServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY
   const originalProvider = process.env.EVIDENCE_PROVIDER
+  const originalRuntimeDir = process.env.EVIDENCE_RUNTIME_DIR
   const originalFetch = globalThis.fetch
 
   writeFileSync(csvPath, SAMPLE_CSV, 'utf8')
   process.env.EVIDENCE_DB_PATH = dbPath
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://demo.invalid.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'demo-service-role'
+  process.env.EVIDENCE_RUNTIME_DIR = runtimeDir
   delete process.env.EVIDENCE_PROVIDER
 
   let fetchCalled = false
@@ -222,6 +225,12 @@ test('search service defaults to sqlite for demo mode even when supabase env var
       delete process.env.EVIDENCE_PROVIDER
     }
 
+    if (originalRuntimeDir) {
+      process.env.EVIDENCE_RUNTIME_DIR = originalRuntimeDir
+    } else {
+      delete process.env.EVIDENCE_RUNTIME_DIR
+    }
+
     globalThis.fetch = originalFetch
     rmSync(tempDir, { recursive: true, force: true })
   })
@@ -243,4 +252,67 @@ test('search service defaults to sqlite for demo mode even when supabase env var
   assert.equal(meta.status, 'ready')
   assert.equal(search.results[0]?.tag, 'Courts solve warming now')
   assert.equal(fetchCalled, false)
+  assert.equal(existsSync(path.join(runtimeDir, path.basename(dbPath))), false)
+})
+
+test('vercel runtime copies the bundled sqlite database into a writable runtime directory', async (t) => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'debatica-evidence-vercel-'))
+  const sourceDir = path.join(tempDir, 'readonly-source')
+  const runtimeDir = path.join(tempDir, 'runtime-db')
+  const csvPath = path.join(tempDir, 'evidence-sample.csv')
+  const dbPath = path.join(sourceDir, 'evidence-index.sqlite')
+  const runtimeDbPath = path.join(runtimeDir, path.basename(dbPath))
+  const originalDbPath = process.env.EVIDENCE_DB_PATH
+  const originalVercel = process.env.VERCEL
+  const originalRuntimeDir = process.env.EVIDENCE_RUNTIME_DIR
+
+  mkdirSync(sourceDir, { recursive: true })
+  writeFileSync(csvPath, SAMPLE_CSV, 'utf8')
+  process.env.EVIDENCE_DB_PATH = dbPath
+  process.env.EVIDENCE_RUNTIME_DIR = runtimeDir
+  process.env.VERCEL = '1'
+
+  t.after(() => {
+    closeEvidenceDb()
+
+    if (originalDbPath) {
+      process.env.EVIDENCE_DB_PATH = originalDbPath
+    } else {
+      delete process.env.EVIDENCE_DB_PATH
+    }
+
+    if (originalVercel) {
+      process.env.VERCEL = originalVercel
+    } else {
+      delete process.env.VERCEL
+    }
+
+    if (originalRuntimeDir) {
+      process.env.EVIDENCE_RUNTIME_DIR = originalRuntimeDir
+    } else {
+      delete process.env.EVIDENCE_RUNTIME_DIR
+    }
+
+    chmodSync(sourceDir, 0o755)
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  await ingestEvidence({
+    source: csvPath,
+    dbPath,
+    logger: {
+      log() {},
+      error() {},
+    },
+  })
+
+  chmodSync(sourceDir, 0o555)
+  closeEvidenceDb()
+
+  const meta = await getSearchMetaFromService()
+  const search = await searchCardsFromService({ q: 'courts', page: 1, pageSize: 5, event: '' })
+
+  assert.equal(meta.status, 'ready')
+  assert.equal(search.results[0]?.tag, 'Courts solve warming now')
+  assert.equal(existsSync(runtimeDbPath), true)
 })

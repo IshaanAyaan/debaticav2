@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
@@ -10,6 +10,7 @@ export class EvidenceDatabaseUnavailableError extends Error {
 }
 
 const DEFAULT_DB_FILE = 'evidence-index.sqlite'
+const DEFAULT_VERCEL_RUNTIME_DIR = '/tmp/debatica'
 
 let cachedDb: DatabaseSync | null = null
 let cachedDbPath: string | null = null
@@ -22,35 +23,116 @@ export function resolveEvidenceDbPath(dbPath?: string): string {
   return dbPath || process.env.EVIDENCE_DB_PATH || path.join(resolveEvidenceDataDir(), DEFAULT_DB_FILE)
 }
 
+export function resolveEvidenceRuntimeDir(): string {
+  return process.env.EVIDENCE_RUNTIME_DIR || DEFAULT_VERCEL_RUNTIME_DIR
+}
+
+export function isVercelRuntime(): boolean {
+  return process.env.VERCEL === '1'
+}
+
+function resolveRuntimeEvidenceDbPath(sourcePath: string): string {
+  return path.join(resolveEvidenceRuntimeDir(), path.basename(sourcePath))
+}
+
 export function ensureEvidenceDataDir(): string {
   const dataDir = resolveEvidenceDataDir()
   mkdirSync(dataDir, { recursive: true })
   return dataDir
 }
 
-function configureDatabase(db: DatabaseSync): void {
+function configureLocalDatabase(db: DatabaseSync): void {
   db.exec(`
-    PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = NORMAL;
     PRAGMA busy_timeout = 5000;
   `)
 }
 
-export function createEvidenceDb(dbPath?: string): DatabaseSync {
-  const resolvedPath = resolveEvidenceDbPath(dbPath)
-  ensureEvidenceDataDir()
-  const db = new DatabaseSync(resolvedPath)
-  configureDatabase(db)
+function configureRuntimeDatabase(db: DatabaseSync): void {
+  db.exec(`
+    PRAGMA busy_timeout = 5000;
+  `)
+}
+
+function openDatabaseConnection(resolvedPath: string, mode: 'local' | 'runtime'): DatabaseSync {
+  const db = new DatabaseSync(resolvedPath, {
+    enableForeignKeyConstraints: true,
+  })
+
+  if (mode === 'runtime') {
+    configureRuntimeDatabase(db)
+  } else {
+    configureLocalDatabase(db)
+  }
+
   return db
 }
 
-export function getEvidenceDb(): DatabaseSync {
-  const resolvedPath = resolveEvidenceDbPath()
+function removeRuntimeTempFile(tempPath: string): void {
+  try {
+    rmSync(tempPath, { force: true })
+  } catch {
+    // best effort cleanup only
+  }
+}
 
-  if (!existsSync(resolvedPath)) {
+function ensureRuntimeEvidenceDb(sourcePath: string): string {
+  if (!existsSync(sourcePath)) {
     throw new EvidenceDatabaseUnavailableError(
-      `Evidence database not found at ${resolvedPath}. Run npm run ingest:evidence:demo or npm run ingest:evidence first.`
+      `Bundled evidence database not found at ${sourcePath}. Ensure the deployment includes data/evidence-index.sqlite.`
+    )
+  }
+
+  const runtimeDir = resolveEvidenceRuntimeDir()
+  const runtimePath = resolveRuntimeEvidenceDbPath(sourcePath)
+  mkdirSync(runtimeDir, { recursive: true })
+
+  let shouldCopy = !existsSync(runtimePath)
+
+  if (!shouldCopy) {
+    try {
+      const sourceStat = statSync(sourcePath)
+      const runtimeStat = statSync(runtimePath)
+      shouldCopy = sourceStat.size !== runtimeStat.size || sourceStat.mtimeMs > runtimeStat.mtimeMs
+    } catch {
+      shouldCopy = true
+    }
+  }
+
+  if (shouldCopy) {
+    const tempPath = `${runtimePath}.${process.pid}.${Date.now()}.tmp`
+
+    try {
+      copyFileSync(sourcePath, tempPath)
+      renameSync(tempPath, runtimePath)
+      console.info(`[evidence-db] copied bundled database to runtime path ${runtimePath}`)
+    } catch (error) {
+      removeRuntimeTempFile(tempPath)
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[evidence-db] failed to prepare runtime database at ${runtimePath}: ${message}`)
+      throw new EvidenceDatabaseUnavailableError(
+        `Unable to prepare runtime evidence database at ${runtimePath}: ${message}`
+      )
+    }
+  }
+
+  return runtimePath
+}
+
+export function createEvidenceDb(dbPath?: string): DatabaseSync {
+  const resolvedPath = resolveEvidenceDbPath(dbPath)
+  mkdirSync(path.dirname(resolvedPath), { recursive: true })
+  return openDatabaseConnection(resolvedPath, 'local')
+}
+
+export function getEvidenceDb(): DatabaseSync {
+  const sourcePath = resolveEvidenceDbPath()
+  const resolvedPath = isVercelRuntime() ? ensureRuntimeEvidenceDb(sourcePath) : sourcePath
+
+  if (!existsSync(sourcePath)) {
+    throw new EvidenceDatabaseUnavailableError(
+      `Evidence database not found at ${sourcePath}. Run npm run ingest:evidence:demo or npm run ingest:evidence first.`
     )
   }
 
@@ -62,9 +144,18 @@ export function getEvidenceDb(): DatabaseSync {
     cachedDb.close()
   }
 
-  cachedDb = new DatabaseSync(resolvedPath)
-  cachedDbPath = resolvedPath
-  configureDatabase(cachedDb)
+  try {
+    cachedDb = openDatabaseConnection(resolvedPath, isVercelRuntime() ? 'runtime' : 'local')
+    cachedDbPath = resolvedPath
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[evidence-db] failed to open database at ${resolvedPath}: ${message}`)
+    throw new EvidenceDatabaseUnavailableError(`Unable to open evidence database at ${resolvedPath}: ${message}`)
+  }
+
+  if (isVercelRuntime()) {
+    console.info(`[evidence-db] using runtime database at ${resolvedPath}`)
+  }
 
   return cachedDb
 }
