@@ -368,18 +368,6 @@ export default function EvidenceFinderPage() {
           </button>
         </form>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-          <span>{meta?.scopeLabel || (metaLoading ? 'Loading evidence index' : 'Evidence index unavailable')}</span>
-          {meta ? (
-            <>
-              <span>•</span>
-              <span>{meta.totalClusters.toLocaleString()} clusters</span>
-              <span>•</span>
-              <span>{meta.totalVariants.toLocaleString()} cards</span>
-            </>
-          ) : null}
-        </div>
-
         {meta?.status === 'missing' ? (
           <div className="mt-6">
             <SetupNotice message={meta.message || 'Build the evidence index before using the card finder.'} />
